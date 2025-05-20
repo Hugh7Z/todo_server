@@ -20,7 +20,10 @@ mongoose.connect(process.env.MONGODB_URI, {
 // Todo模型
 const todoSchema = new mongoose.Schema({
   value: String,
-  isComplete: Boolean
+  isComplete: Boolean,
+  userId: String,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 const Todo = mongoose.model('Todo', todoSchema);
@@ -29,49 +32,210 @@ const Todo = mongoose.model('Todo', todoSchema);
 // 获取所有todo
 app.get('/get_list', async (req, res) => {
   try {
-    const todos = await Todo.find();
-    res.json({ list: todos });
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false, 
+        code: 400, 
+        message: '缺少必要参数: userId' 
+      });
+    }
+
+    const todoList = await Todo.find({ userId });
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取成功',
+      list: todoList
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('获取待办事项列表失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      code: 500, 
+      message: '服务器内部错误' 
+    });
   }
 });
 
 // 添加todo
 app.post('/add_list', async (req, res) => {
   try {
-    const { value, isComplete } = req.body;
-    const todo = new Todo({ value, isComplete });
-    await todo.save();
-    res.json({ message: 'Todo added successfully' });
+    const body = req.body;
+
+    // 基础结构检查
+    if (typeof body !== 'object' || body === null) {
+      return res.status(400).json({ 
+        success: false, 
+        code: 400, 
+        message: '数据格式必须是 JSON 对象' 
+      });
+    }
+
+    // 必需字段检查
+    const requiredFields = ['value', 'isComplete', 'userId'];
+    for (const field of requiredFields) {
+      if (!(field in body)) {
+        return res.status(400).json({ 
+          success: false, 
+          code: 400, 
+          message: `缺少必要字段: ${field}` 
+        });
+      }
+    }
+
+    // 字段类型检查
+    if (typeof body.value !== 'string' || body.value.trim() === '') {
+      return res.status(400).json({ 
+        success: false, 
+        code: 400, 
+        message: 'value 必须是有效字符串' 
+      });
+    }
+
+    if (typeof body.isComplete !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: 'isComplete 必须是布尔值'
+      });
+    }
+
+    if (typeof body.userId !== 'string' || body.userId.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: 'userId 必须是有效字符串'
+      });
+    }
+
+    const todo = new Todo({
+      ...body,
+      createdAt: new Date()
+    });
+    
+    const result = await todo.save();
+    
+    res.status(201).json({
+      success: true,
+      code: 201,
+      message: '添加成功',
+      id: result._id
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('添加待办事项失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '服务器内部错误'
+    });
   }
 });
 
 // 更新todo状态
 app.post('/update_list', async (req, res) => {
   try {
-    const { id } = req.body;
-    const todo = await Todo.findById(id);
-    if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
+    const body = req.body;
+
+    // 基础结构检查
+    if (typeof body !== 'object' || body === null) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '数据格式必须是 JSON 对象'
+      });
     }
+
+    // 必需字段检查
+    if (!body.id || !body.userId) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '缺少必要字段: id 或 userId'
+      });
+    }
+
+    const todo = await Todo.findOne({
+      _id: body.id,
+      userId: body.userId
+    });
+
+    if (!todo) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '待办事项不存在或无权访问'
+      });
+    }
+
     todo.isComplete = !todo.isComplete;
+    todo.updatedAt = new Date();
     await todo.save();
-    res.json({ message: 'Todo updated successfully' });
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '更新成功'
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('更新待办事项状态失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '服务器内部错误'
+    });
   }
 });
 
 // 删除todo
 app.post('/del_list', async (req, res) => {
   try {
-    const { id } = req.body;
-    await Todo.findByIdAndDelete(id);
-    res.json({ message: 'Todo deleted successfully' });
+    const body = req.body;
+
+    // 基础结构检查
+    if (typeof body !== 'object' || body === null) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '数据格式必须是 JSON 对象'
+      });
+    }
+
+    // 必需字段检查
+    if (!body.id || !body.userId) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '缺少必要字段: id 或 userId'
+      });
+    }
+
+    const result = await Todo.deleteOne({
+      _id: body.id,
+      userId: body.userId
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '待办事项不存在或无权访问'
+      });
+    }
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '删除成功'
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('删除待办事项失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '服务器内部错误'
+    });
   }
 });
 
