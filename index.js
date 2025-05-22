@@ -17,6 +17,17 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('MongoDB connected successfully'))
 .catch(err => console.error('MongoDB connection error:', err));
 
+// User模型
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', userSchema);
+
 // Todo模型
 const todoSchema = new mongoose.Schema({
   value: String,
@@ -29,6 +40,99 @@ const todoSchema = new mongoose.Schema({
 const Todo = mongoose.model('Todo', todoSchema);
 
 // API路由
+// 用户注册
+app.post('/register', async (req, res) => {
+  try {
+    const { username, password, email } = req.body;
+
+    // 检查必要字段
+    if (!username || !password || !email) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '缺少必要字段'
+      });
+    }
+
+    // 检查用户名和邮箱是否已存在
+    const existingUser = await User.findOne({
+      $or: [{ username }, { email }]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '用户名或邮箱已存在'
+      });
+    }
+
+    // 创建新用户
+    const user = new User({
+      username,
+      password, // 注意：实际应用中应该对密码进行加密
+      email
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      success: true,
+      code: 201,
+      message: '注册成功',
+      userId: user._id
+    });
+  } catch (error) {
+    console.error('用户注册失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '服务器内部错误'
+    });
+  }
+});
+
+// 用户登录
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // 检查必要字段
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '缺少必要字段'
+      });
+    }
+
+    // 查找用户
+    const user = await User.findOne({ username });
+
+    if (!user || user.password !== password) { // 注意：实际应用中应该使用加密比较
+      return res.status(401).json({
+        success: false,
+        code: 401,
+        message: '用户名或密码错误'
+      });
+    }
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '登录成功',
+      userId: user._id
+    });
+  } catch (error) {
+    console.error('用户登录失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '服务器内部错误'
+    });
+  }
+});
+
 // 获取所有todo
 app.get('/get_list', async (req, res) => {
   try {
