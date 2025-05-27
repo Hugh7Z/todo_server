@@ -1,5 +1,6 @@
 # 依赖目录
-node_modules/
+node_modules/*
+node_modules
 
 # IDE 和编辑器
 .vscode/
